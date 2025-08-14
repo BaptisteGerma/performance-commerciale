@@ -1905,7 +1905,7 @@ if not st.session_state.files_loaded:
         mapping_file = st.file_uploader("Fichier avec les noms des commerciaux", type=['xlsx', 'xls'], key="mapping_uploader", label_visibility="collapsed")
     
     with col2:
-        st.markdown("##### 📋 Fichier des commandes *")
+        st.markdown("##### 📋 Fichier des commandes (Copa) *")
         commandes_file = st.file_uploader("Sélectionnez votre fichier Excel", type=['xlsx', 'xls'], key="commandes_uploader", label_visibility="collapsed")
         
         st.markdown("##### 📝 Fichier mapping commerciaux de saisie *")
@@ -3558,3 +3558,4 @@ else:
         </div>
     </div>
     """, unsafe_allow_html=True)
+
