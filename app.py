@@ -567,7 +567,7 @@ def categorize_commercials(df_devis, df_commandes, df_mapping_commerciaux, df_ma
     """Catégorise les commerciaux entre commerciaux et commerciaux de saisie - VERSION CORRIGÉE"""
     # Obtenir tous les commerciaux présents dans les données (CONVERSION EN STRING)
     commercials_devis = df_devis['Created By Line'].dropna().astype(str).unique()
-    commercials_commandes = df_commandes['Created By Line'].dropna().astype(str).unique()
+    commercials_commandes = df_commandes['Created By Header'].dropna().astype(str).unique()  # ← CORRECTION ICI
     all_commercials = list(set(commercials_devis) | set(commercials_commandes))
     
     # Séparer selon les fichiers de mapping
@@ -581,7 +581,7 @@ def categorize_commercials(df_devis, df_commandes, df_mapping_commerciaux, df_ma
             if str(commercial) in commerciaux_avec_objectifs:  # CONVERSION EXPLICITE
                 commerciaux_list.append(str(commercial))
     
-    # ✅ CORRECTION : Commerciaux de saisie (SEULEMENT ceux des commandes)
+    # Commerciaux de saisie (SEULEMENT ceux des commandes)
     if df_mapping_saisie is not None:
         commerciaux_saisie_mapping = df_mapping_saisie['User Sap'].astype(str).unique()
         for commercial in commercials_commandes:  # ← CHANGEMENT ICI : seulement commercials_commandes
@@ -681,7 +681,11 @@ def filter_data_by_commercial_list(df, commercials_list, fiscal_year=None, month
         ]
     
     if commercial and commercial != "Tous les commerciaux":
-        filtered_df = filtered_df[filtered_df['Created By Line'] == str(commercial)]
+        # Utiliser la bonne colonne selon le type de fichier
+        if 'Created By Line' in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df['Created By Line'] == str(commercial)]
+        elif 'Created By Header' in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df['Created By Header'] == str(commercial)]
     
     return filtered_df
 
@@ -708,7 +712,7 @@ def calculate_kpis(df_devis, df_commandes, df_objectifs=None, df_mapping=None, f
     else:
         # Fallback si pas de mapping : prendre ceux des données
         commercials_devis = df_devis['Created By Line'].dropna().astype(str).unique()
-        commercials_commandes = df_commandes['Created By Line'].dropna().astype(str).unique()
+        commercials_commandes = df_commandes['Created By Header'].dropna().astype(str).unique()
         all_commercials = list(set(commercials_devis) | set(commercials_commandes))
         nb_commerciaux = len(all_commercials)
     
@@ -717,7 +721,7 @@ def calculate_kpis(df_devis, df_commandes, df_objectifs=None, df_mapping=None, f
     # Ajuster le nombre si on filtre sur un commercial spécifique
     commercials_in_data = list(set(
         list(df_devis['Created By Line'].dropna().astype(str).unique()) + 
-        list(df_commandes['Created By Line'].dropna().astype(str).unique())
+        list(df_commandes['Created By Header'].dropna().astype(str).unique())
     ))
 
     if len(commercials_in_data) == 1:
@@ -749,7 +753,7 @@ def calculate_kpis(df_devis, df_commandes, df_objectifs=None, df_mapping=None, f
         # Déterminer quels commerciaux considérer selon les données filtrées
         commercials_in_data = list(set(
             list(df_devis['Created By Line'].dropna().astype(str).unique()) + 
-            list(df_commandes['Created By Line'].dropna().astype(str).unique())
+            list(df_commandes['Created By Header'].dropna().astype(str).unique())
         ))
         
         # Si les données ne concernent qu'un seul commercial, calculer seulement pour lui
@@ -795,7 +799,7 @@ def calculate_kpis_saisie_only(df_commandes, df_mapping_saisie, fiscal_year=None
     # ET qui sont dans le mapping de saisie
     if df_mapping_saisie is not None:
         # Commerciaux qui ont des commandes dans les données filtrées
-        commercials_with_data = df_commandes['Created By Line'].dropna().astype(str).unique()
+        commercials_with_data = df_commandes['Created By Header'].dropna().astype(str).unique()
         # Commerciaux autorisés selon le mapping
         commercials_in_mapping = df_mapping_saisie['User Sap'].astype(str).unique()
         # ✅ INTERSECTION : seulement ceux qui sont dans les deux
@@ -803,7 +807,7 @@ def calculate_kpis_saisie_only(df_commandes, df_mapping_saisie, fiscal_year=None
         nb_commerciaux = len(valid_commercials)
     else:
         # Si pas de mapping, compter directement les commerciaux dans les données
-        nb_commerciaux = df_commandes['Created By Line'].dropna().astype(str).nunique()
+        nb_commerciaux = df_commandes['Created By Header'].dropna().astype(str).nunique()
     
     # ✅ CORRECTION IMPORTANTE : Si aucun commercial trouvé, mettre 1 pour éviter division par zéro
     if nb_commerciaux == 0:
@@ -831,17 +835,17 @@ def calculate_kpis_saisie_only(df_commandes, df_mapping_saisie, fiscal_year=None
 def calculate_commercial_performance_saisie(df_commandes, df_mapping_saisie, fiscal_year):
     """Calcule les performances pour commerciaux de saisie (SEULEMENT commandes) - VERSION CORRIGÉE"""
     
-    # ✅ CORRECTION : Prendre seulement les commerciaux qui ont des données dans df_commandes
+    # Prendre seulement les commerciaux qui ont des données dans df_commandes
     # ET qui sont dans le mapping de saisie
     if df_mapping_saisie is not None:
         # Commerciaux qui ont des commandes dans les données filtrées
-        commercials_with_data = df_commandes['Created By Line'].dropna().astype(str).unique()
+        commercials_with_data = df_commandes['Created By Header'].dropna().astype(str).unique()
         # Commerciaux autorisés selon le mapping
         commercials_in_mapping = df_mapping_saisie['User Sap'].astype(str).unique()
         # ✅ INTERSECTION : seulement ceux qui sont dans les deux
         all_commercials_saisie = [c for c in commercials_with_data if c in commercials_in_mapping]
     else:
-        all_commercials_saisie = df_commandes['Created By Line'].dropna().astype(str).unique()
+        all_commercials_saisie = df_commandes['Created By Header'].dropna().astype(str).unique()
     
     # Déterminer la colonne de valeur
     net_value_col_commandes = get_net_value_column(df_commandes, fiscal_year)
@@ -849,7 +853,7 @@ def calculate_commercial_performance_saisie(df_commandes, df_mapping_saisie, fis
     stats = []
     
     for commercial in all_commercials_saisie:
-        commandes_com = df_commandes[df_commandes['Created By Line'] == commercial]
+        commandes_com = df_commandes[df_commandes['Created By Header'] == commercial]
         
         nom_complet = get_commercial_name(commercial, df_mapping_saisie)
         
@@ -914,7 +918,7 @@ def calculate_commercial_performance(df_devis, df_commandes, df_objectifs, df_ma
     else:
         # Fallback si pas de mapping
         commercials_devis = df_devis['Created By Line'].dropna().astype(str).unique()
-        commercials_commandes = df_commandes['Created By Line'].dropna().astype(str).unique()
+        commercials_commandes = df_commandes['Created By Header'].dropna().astype(str).unique()
         all_commercials = list(set(commercials_devis) | set(commercials_commandes))
     
     # Déterminer les colonnes de valeur
@@ -926,7 +930,8 @@ def calculate_commercial_performance(df_devis, df_commandes, df_objectifs, df_ma
     
     for commercial in all_commercials:
         devis_com = df_devis[df_devis['Created By Line'] == commercial]
-        commandes_com = df_commandes[df_commandes['Created By Line'] == commercial]
+        commandes_com = df_commandes[df_commandes['Created By Header'] == commercial]
+
         
         nom_complet = get_commercial_name(commercial, df_mapping)
         
@@ -1609,13 +1614,13 @@ def filter_data_by_commercial_list_for_saisie(df, commercials_list, fiscal_year=
     """Filtre spécialement pour les commerciaux de saisie - VERSION CORRIGÉE"""
     # Créer une copie et convertir les types
     df_copy = df.copy()
-    df_copy['Created By Line'] = df_copy['Created By Line'].astype(str)
+    df_copy['Created By Header'] = df_copy['Created By Header'].astype(str)
     
     # Convertir la liste des commerciaux en string
     commercials_list_str = [str(x) for x in commercials_list]
     
     # Filtrer par la liste des commerciaux autorisés
-    filtered_df = df_copy[df_copy['Created By Line'].isin(commercials_list_str)].copy()
+    filtered_df = df_copy[df_copy['Created By Header'].isin(commercials_list_str)].copy()
     
     if fiscal_year:
         filtered_df = filtered_df[filtered_df['Année_Fiscale'] == fiscal_year]
@@ -1630,7 +1635,7 @@ def filter_data_by_commercial_list_for_saisie(df, commercials_list, fiscal_year=
         ]
     
     if commercial and commercial != "Tous les commerciaux":
-        filtered_df = filtered_df[filtered_df['Created By Line'] == str(commercial)]
+        filtered_df = filtered_df[filtered_df['Created By Header'] == str(commercial)]
     
     return filtered_df
 
@@ -3558,4 +3563,3 @@ else:
         </div>
     </div>
     """, unsafe_allow_html=True)
-
