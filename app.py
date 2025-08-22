@@ -282,7 +282,7 @@ def aggregate_orders_by_doc(orders: pd.DataFrame, IC_VALUES=["IC-Inbound Call", 
     ic_flag = (orders.assign(_is_ic=(orders["Purchase Order Type"].isin(IC_VALUES)))
                      .groupby("Sales Document #")["_is_ic"].any()
                      .rename("HasIC").reset_index()
-
+              )
     # Agrégation
     agg_dict = {
         "Date": ("Date", "min"),
@@ -3563,4 +3563,5 @@ else:
         </div>
     </div>
     """, unsafe_allow_html=True)
+
 
