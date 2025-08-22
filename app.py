@@ -272,16 +272,16 @@ def _detect_net_value_column(df: pd.DataFrame, fiscal_year: int, file_type="devi
     
     return df
 
-def aggregate_orders_by_doc(orders: pd.DataFrame, IC_VALUE="IC-Inbound Call", file_type="commandes") -> pd.DataFrame:
+def aggregate_orders_by_doc(orders: pd.DataFrame, IC_VALUES=["IC-Inbound Call", "IC"], file_type="commandes") -> pd.DataFrame:
     """Agrège les commandes par document selon le type de fichier"""
     
     # Déterminer la colonne Created By selon le type
     created_by_col = "Created By Header" if file_type == "commandes" else "Created By Line"
     
     # Flag IC au niveau commande (si au moins une ligne IC)
-    ic_flag = (orders.assign(_is_ic=(orders["Purchase Order Type"] == IC_VALUE))
+    ic_flag = (orders.assign(_is_ic=(orders["Purchase Order Type"].isin(IC_VALUES)))
                      .groupby("Sales Document #")["_is_ic"].any()
-                     .rename("HasIC").reset_index())
+                     .rename("HasIC").reset_index()
 
     # Agrégation
     agg_dict = {
@@ -319,7 +319,7 @@ def build_real_orders_for_user_python_style(orders: pd.DataFrame, attrib: pd.Dat
     # ✅ ÉTAPE 1 : Détecter et nettoyer la colonne Net Value
     orders_cleaned = _detect_net_value_column(orders.copy(), orders['Année_Fiscale'].iloc[0], "commandes")    
     # ✅ ÉTAPE 2 : Agrégation par document
-    aggs = aggregate_orders_by_doc(orders_cleaned, "IC-Inbound Call", "commandes")
+    aggs = aggregate_orders_by_doc(orders_cleaned, ["IC-Inbound Call", "IC"], "commandes")
 
     # ✅ ÉTAPE 3 : Attribution (INNER JOIN)
     attrib_unique = attrib[["Order Document #","Created By Header"]].drop_duplicates("Order Document #")
@@ -1425,7 +1425,7 @@ def create_real_orders_data(df_commandes, df_attribution, fiscal_year):
         df_with_net_value = _detect_net_value_column(df_commandes_clean, fiscal_year)
         
         # Agrégation par document
-        aggs = aggregate_orders_by_doc(df_with_net_value)
+        aggs = aggregate_orders_by_doc(df_with_net_value, ["IC-Inbound Call", "IC"])
         
         # Attribution (INNER JOIN)
         attrib_unique = df_attribution_clean[["Order Document #","Created By Header"]].drop_duplicates("Order Document #")
@@ -3563,3 +3563,4 @@ else:
         </div>
     </div>
     """, unsafe_allow_html=True)
+
