@@ -665,11 +665,6 @@ def get_objectif_column(df_objectifs, fiscal_year):
         if 'Objectif' in col and str(fiscal_year) in col:
             return col
     
-    # Dernière tentative : chercher n'importe quelle colonne avec "Objectif"
-    for col in df_objectifs.columns:
-        if 'Objectif' in col:
-            return col
-    
     return None
 
 def filter_data(df, fiscal_year=None, month=None, period=None, commercial=None):
@@ -3648,3 +3643,4 @@ else:
         </div>
     </div>
     """, unsafe_allow_html=True)
+
