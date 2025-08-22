@@ -184,17 +184,26 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-def detect_created_by_header_column(df):
-    """Détecte automatiquement la colonne Created By Header selon les variantes possibles"""
-    possible_columns = ['Created By Header', 'Created By - Header']
+def get_created_by_column_name(df, file_type="devis"):
+    """Détermine automatiquement le nom de la colonne Created By selon le fichier"""
     
-    for col in possible_columns:
-        if col in df.columns:
-            return col
+    if file_type == "devis":
+        # Pour les devis, seule possibilité
+        if 'Created By Line' in df.columns:
+            return 'Created By Line'
+    else:  # commandes
+        # Pour les commandes, chercher dans cet ordre
+        possible_names = [
+            'Created By Header',
+            'Created By - Header'
+        ]
+        
+        for name in possible_names:
+            if name in df.columns:
+                return name
     
-    # Si aucune variante trouvée, lever une erreur
-    available_cols = ', '.join(df.columns)
-    raise ValueError(f"❌ Aucune colonne 'Created By Header' ou 'Created By - Header' trouvée. Colonnes disponibles : {available_cols}")
+    # Si aucune trouvée, retourner None
+    return None
 
 # Fonctions utilitaires
 def parse_date_column(df, date_column=None, file_type="devis"):
@@ -288,10 +297,12 @@ def aggregate_orders_by_doc(orders: pd.DataFrame, IC_VALUES=["IC-Inbound Call", 
     """Agrège les commandes par document selon le type de fichier"""
     
     # Déterminer la colonne Created By selon le type
-    if file_type == "commandes":
-        created_by_col = detect_created_by_header_column(orders)
-    else:
-        created_by_col = "Created By Line"    
+    created_by_col = get_created_by_column_name(orders, file_type)
+    if not created_by_col:
+        available_cols = ', '.join(orders.columns)
+        raise ValueError(f"❌ Aucune colonne 'Created By' trouvée pour {file_type}. Colonnes disponibles : {available_cols}")
+
+
     # Flag IC au niveau commande (si au moins une ligne IC)
     ic_flag = (orders.assign(_is_ic=(orders["Purchase Order Type"].isin(IC_VALUES)))
                      .groupby("Sales Document #")["_is_ic"].any()
@@ -580,13 +591,11 @@ def get_commercial_name(user_sap, df_mapping):
 def categorize_commercials(df_devis, df_commandes, df_mapping_commerciaux, df_mapping_saisie):
     """Catégorise les commerciaux entre commerciaux et commerciaux de saisie - VERSION CORRIGÉE"""
     # Obtenir tous les commerciaux présents dans les données (CONVERSION EN STRING)
-    commercials_devis = df_devis['Created By Line'].dropna().astype(str).unique()
-     # Pour les commandes : détecter la bonne colonne
-    try:
-        created_by_header_col = detect_created_by_header_column(df_commandes)
-        commercials_commandes = df_commandes[created_by_header_col].dropna().astype(str).unique()
-    except ValueError:
-        commercials_commandes = []
+    created_by_devis = get_created_by_column_name(df_devis, "devis")
+    created_by_commandes = get_created_by_column_name(df_commandes, "commandes")
+
+    commercials_devis = df_devis[created_by_devis].dropna().astype(str).unique() if created_by_devis else []
+    commercials_commandes = df_commandes[created_by_commandes].dropna().astype(str).unique() if created_by_commandes else []
     all_commercials = list(set(commercials_devis) | set(commercials_commandes))
     
     # Séparer selon les fichiers de mapping
@@ -730,24 +739,19 @@ def calculate_kpis(df_devis, df_commandes, df_objectifs=None, df_mapping=None, f
         nb_commerciaux = len(all_commercials)
     else:
         # Fallback si pas de mapping : prendre ceux des données
-        commercials_devis = df_devis['Created By Line'].dropna().astype(str).unique()
-        # Détecter la bonne colonne pour les commandes
-        try:
-            created_by_header_col = detect_created_by_header_column(df_commandes)
-            commercials_commandes = df_commandes[created_by_header_col].dropna().astype(str).unique()
-        except ValueError:
-            commercials_commandes = []
+        created_by_devis = get_created_by_column_name(df_devis, "devis")
+        created_by_commandes = get_created_by_column_name(df_commandes, "commandes")
+
+        commercials_devis = df_devis[created_by_devis].dropna().astype(str).unique() if created_by_devis else []
+        commercials_commandes = df_commandes[created_by_commandes].dropna().astype(str).unique() if created_by_commandes else []
         all_commercials = list(set(commercials_devis) | set(commercials_commandes))
         nb_commerciaux = len(all_commercials)
     
     kpis['nb_commerciaux'] = nb_commerciaux
 
     # Ajuster le nombre si on filtre sur un commercial spécifique
-    commercials_in_data = list(set(
-        list(df_devis['Created By Line'].dropna().astype(str).unique()) + 
-        list(df_commandes['Created By Header'].dropna().astype(str).unique())
-    ))
-
+    commercials_in_data = list(set(commercials_devis) | set(commercials_commandes))
+    
     if len(commercials_in_data) == 1:
         nb_commerciaux = 1
         kpis['nb_commerciaux'] = 1
@@ -775,10 +779,7 @@ def calculate_kpis(df_devis, df_commandes, df_objectifs=None, df_mapping=None, f
         objectif_total_global = 0
         
         # Déterminer quels commerciaux considérer selon les données filtrées
-        commercials_in_data = list(set(
-            list(df_devis['Created By Line'].dropna().astype(str).unique()) + 
-            list(df_commandes['Created By Header'].dropna().astype(str).unique())
-        ))
+        commercials_in_data = list(set(commercials_devis) | set(commercials_commandes))
         
         # Si les données ne concernent qu'un seul commercial, calculer seulement pour lui
         if len(commercials_in_data) == 1:
@@ -823,11 +824,8 @@ def calculate_kpis_saisie_only(df_commandes, df_mapping_saisie, fiscal_year=None
     # ET qui sont dans le mapping de saisie
     if df_mapping_saisie is not None:
         # Détecter la bonne colonne pour les commandes
-        try:
-            created_by_header_col = detect_created_by_header_column(df_commandes)
-            commercials_with_data = df_commandes[created_by_header_col].dropna().astype(str).unique()
-        except ValueError:
-            commercials_with_data = []
+        created_by_col = get_created_by_column_name(df_commandes, "commandes")
+        commercials_with_data = df_commandes[created_by_col].dropna().astype(str).unique() if created_by_col else []
         # Commerciaux autorisés selon le mapping
         commercials_in_mapping = df_mapping_saisie['User Sap'].astype(str).unique()
         # ✅ INTERSECTION : seulement ceux qui sont dans les deux
@@ -835,10 +833,9 @@ def calculate_kpis_saisie_only(df_commandes, df_mapping_saisie, fiscal_year=None
         nb_commerciaux = len(valid_commercials)
     else:
         # Si pas de mapping, compter directement les commerciaux dans les données
-        try:
-            created_by_header_col = detect_created_by_header_column(df_commandes)
-            nb_commerciaux = df_commandes[created_by_header_col].dropna().astype(str).nunique()
-        except ValueError:
+        if created_by_col:
+            nb_commerciaux = df_commandes[created_by_col].dropna().astype(str).nunique()
+        else:
             nb_commerciaux = 0
         
     # ✅ CORRECTION IMPORTANTE : Si aucun commercial trouvé, mettre 1 pour éviter division par zéro
@@ -870,33 +867,28 @@ def calculate_commercial_performance_saisie(df_commandes, df_mapping_saisie, fis
     # Prendre seulement les commerciaux qui ont des données dans df_commandes
     # ET qui sont dans le mapping de saisie
     if df_mapping_saisie is not None:
+        #
         # Détecter la bonne colonne pour les commandes
-        try:
-            created_by_header_col = detect_created_by_header_column(df_commandes)
-            commercials_with_data = df_commandes[created_by_header_col].dropna().astype(str).unique()
-        except ValueError:
-            commercials_with_data = []
+        created_by_col = get_created_by_column_name(df_commandes, "commandes")
+        commercials_with_data = df_commandes[created_by_col].dropna().astype(str).unique() if created_by_col else []
         # Commerciaux autorisés selon le mapping
         commercials_in_mapping = df_mapping_saisie['User Sap'].astype(str).unique()
         # ✅ INTERSECTION : seulement ceux qui sont dans les deux
         all_commercials_saisie = [c for c in commercials_with_data if c in commercials_in_mapping]
     else:
-        try:
-            created_by_header_col = detect_created_by_header_column(df_commandes)
-            all_commercials_saisie = df_commandes[created_by_header_col].dropna().astype(str).unique()
-        except ValueError:
+        if created_by_col:
+            all_commercials_saisie = df_commandes[created_by_col].dropna().astype(str).unique()
+        else:
             all_commercials_saisie = []
-    
     # Déterminer la colonne de valeur
     net_value_col_commandes = get_net_value_column(df_commandes, fiscal_year)
     
     stats = []
     
     for commercial in all_commercials_saisie:
-        try:
-            created_by_header_col = detect_created_by_header_column(df_commandes)
-            commandes_com = df_commandes[df_commandes[created_by_header_col] == commercial]
-        except ValueError:
+        if created_by_col:
+            commandes_com = df_commandes[df_commandes[created_by_col] == commercial]
+        else:
             commandes_com = pd.DataFrame()
         
         nom_complet = get_commercial_name(commercial, df_mapping_saisie)
@@ -958,16 +950,11 @@ def calculate_commercial_performance(df_devis, df_commandes, df_objectifs, df_ma
     """Calcule les performances détaillées par commercial avec alertes"""
     # PRENDRE TOUS les commerciaux du fichier de mapping (même sans données)
     if df_mapping is not None:
-        all_commercials = df_mapping['User Sap'].astype(str).unique().tolist()
-    else:
-        # Fallback si pas de mapping
-        commercials_devis = df_devis['Created By Line'].dropna().astype(str).unique()
-        # Détecter la bonne colonne pour les commandes
-        try:
-            created_by_header_col = detect_created_by_header_column(df_commandes)
-            commercials_commandes = df_commandes[created_by_header_col].dropna().astype(str).unique()
-        except ValueError:
-            commercials_commandes = []
+        created_by_devis = get_created_by_column_name(df_devis, "devis")
+        created_by_commandes = get_created_by_column_name(df_commandes, "commandes")
+
+        commercials_devis = df_devis[created_by_devis].dropna().astype(str).unique() if created_by_devis else []
+        commercials_commandes = df_commandes[created_by_commandes].dropna().astype(str).unique() if created_by_commandes else []
         all_commercials = list(set(commercials_devis) | set(commercials_commandes))
     
     # Déterminer les colonnes de valeur
@@ -979,10 +966,9 @@ def calculate_commercial_performance(df_devis, df_commandes, df_objectifs, df_ma
     
     for commercial in all_commercials:
         devis_com = df_devis[df_devis['Created By Line'] == commercial]
-        try:
-            created_by_header_col = detect_created_by_header_column(df_commandes)
-            commandes_com = df_commandes[df_commandes[created_by_header_col] == commercial]
-        except ValueError:
+        if created_by_commandes:
+            commandes_com = df_commandes[df_commandes[created_by_commandes] == commercial]
+        else:
             commandes_com = pd.DataFrame()
 
         
@@ -1439,14 +1425,14 @@ def load_attribution_file(uploaded_file):
             return None
 
         # Détecter la colonne Created By Header
-        try:
-            created_by_col = detect_created_by_header_column(df)
-            # Renommer pour uniformiser dans le reste du code
-            if created_by_col != 'Created By Header':
-                df = df.rename(columns={created_by_col: 'Created By Header'})
-        except ValueError as e:
-            st.error(str(e))
+        created_by_col = get_created_by_column_name(df, "commandes")
+        if not created_by_col:
+            st.error(f"❌ Aucune colonne 'Created By Header' ou 'Created By - Header' trouvée. Colonnes disponibles : {', '.join(df.columns)}")
             return None
+
+        # Renommer pour uniformiser dans le reste du code
+        if created_by_col != 'Created By Header':
+            df = df.rename(columns={created_by_col: 'Created By Header'})
         
         # Nettoyer les données
         df['Order Document #'] = df['Order Document #'].astype(str).str.strip()
@@ -1675,17 +1661,16 @@ def filter_data_by_commercial_list_for_saisie(df, commercials_list, fiscal_year=
     # Créer une copie et convertir les types
     df_copy = df.copy()
     # Détecter la bonne colonne
-    try:
-        created_by_header_col = detect_created_by_header_column(df_copy)
-        df_copy[created_by_header_col] = df_copy[created_by_header_col].astype(str)
-    except ValueError:
+    created_by_col = get_created_by_column_name(df_copy, "commandes")
+    if not created_by_col:
         return pd.DataFrame()
     
+    df_copy[created_by_col] = df_copy[created_by_col].astype(str)
     # Convertir la liste des commerciaux en string
     commercials_list_str = [str(x) for x in commercials_list]
     
     # Filtrer par la liste des commerciaux autorisés
-    filtered_df = df_copy[df_copy[created_by_header_col].isin(commercials_list_str)].copy()
+    filtered_df = df_copy[df_copy[created_by_col].isin(commercials_list_str)].copy()
     
     if fiscal_year:
         filtered_df = filtered_df[filtered_df['Année_Fiscale'] == fiscal_year]
@@ -1700,7 +1685,8 @@ def filter_data_by_commercial_list_for_saisie(df, commercials_list, fiscal_year=
         ]
     
     if commercial and commercial != "Tous les commerciaux":
-        filtered_df = filtered_df[filtered_df[created_by_header_col] == str(commercial)]
+        filtered_df = filtered_df[filtered_df[created_by_col] == str(commercial)]
+
     
     return filtered_df
 
@@ -3628,4 +3614,3 @@ else:
         </div>
     </div>
     """, unsafe_allow_html=True)
-
