@@ -1381,12 +1381,22 @@ def extract_managed_group_name(managed_group_value):
 
 def get_top_managed_groups_by_type(df, fiscal_year, n=15, data_type="commandes"):
     """Obtient les top groupes par valeur pour devis ou commandes normales"""
-    if df.empty or 'SoldTo Managed Group' not in df.columns:
+    if df.empty:
+        return pd.DataFrame()
+    
+    # Déterminer quelle colonne de groupe utiliser
+    group_column = None
+    if 'SoldTo Managed Group' in df.columns:
+        group_column = 'SoldTo Managed Group'
+    elif 'Payer Managed Group' in df.columns:
+        group_column = 'Payer Managed Group'
+    
+    if group_column is None:
         return pd.DataFrame()
     
     # Ajouter la colonne du nom du groupe
     df_copy = df.copy()
-    df_copy['Groupe_Name'] = df_copy['SoldTo Managed Group'].apply(extract_managed_group_name)
+    df_copy['Groupe_Name'] = df_copy[group_column].apply(extract_managed_group_name)
     
     # Filtrer seulement les lignes avec un groupe valide
     df_groups = df_copy[df_copy['Groupe_Name'].notna()].copy()
@@ -3643,4 +3653,5 @@ else:
         </div>
     </div>
     """, unsafe_allow_html=True)
+
 
