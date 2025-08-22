@@ -590,12 +590,21 @@ def get_commercial_name(user_sap, df_mapping):
 
 def categorize_commercials(df_devis, df_commandes, df_mapping_commerciaux, df_mapping_saisie):
     """Catégorise les commerciaux entre commerciaux et commerciaux de saisie - VERSION CORRIGÉE"""
+    # CORRECTION: Vérifier que les DataFrames ne sont pas vides
+    if df_devis.empty and df_commandes.empty:
+        return [], []
+    
     # Obtenir tous les commerciaux présents dans les données (CONVERSION EN STRING)
-    created_by_devis = get_created_by_column_name(df_devis, "devis")
-    created_by_commandes = get_created_by_column_name(df_commandes, "commandes")
+    created_by_devis = get_created_by_column_name(df_devis, "devis") if not df_devis.empty else None
+    created_by_commandes = get_created_by_column_name(df_commandes, "commandes") if not df_commandes.empty else None
 
-    commercials_devis = df_devis[created_by_devis].dropna().astype(str).unique() if created_by_devis else []
-    commercials_commandes = df_commandes[created_by_commandes].dropna().astype(str).unique() if created_by_commandes else []
+    commercials_devis = df_devis[created_by_devis].dropna().astype(str).unique() if created_by_devis and not df_devis.empty else []
+    commercials_commandes = df_commandes[created_by_commandes].dropna().astype(str).unique() if created_by_commandes and not df_commandes.empty else []
+    
+    # CORRECTION: Gérer le cas où les deux listes sont vides
+    if len(commercials_devis) == 0 and len(commercials_commandes) == 0:
+        return [], []
+    
     all_commercials = list(set(commercials_devis) | set(commercials_commandes))
     
     # Séparer selon les fichiers de mapping
@@ -603,17 +612,17 @@ def categorize_commercials(df_devis, df_commandes, df_mapping_commerciaux, df_ma
     commerciaux_saisie_list = []
     
     # Commerciaux avec objectifs (CONVERSION EN STRING)
-    if df_mapping_commerciaux is not None:
+    if df_mapping_commerciaux is not None and not df_mapping_commerciaux.empty:
         commerciaux_avec_objectifs = df_mapping_commerciaux['User Sap'].astype(str).unique()
         for commercial in all_commercials:
-            if str(commercial) in commerciaux_avec_objectifs:  # CONVERSION EXPLICITE
+            if str(commercial) in commerciaux_avec_objectifs:
                 commerciaux_list.append(str(commercial))
     
     # Commerciaux de saisie (SEULEMENT ceux des commandes)
-    if df_mapping_saisie is not None:
+    if df_mapping_saisie is not None and not df_mapping_saisie.empty:
         commerciaux_saisie_mapping = df_mapping_saisie['User Sap'].astype(str).unique()
-        for commercial in commercials_commandes:  # ← CHANGEMENT ICI : seulement commercials_commandes
-            if str(commercial) in commerciaux_saisie_mapping:  # CONVERSION EXPLICITE
+        for commercial in commercials_commandes:
+            if str(commercial) in commerciaux_saisie_mapping:
                 commerciaux_saisie_list.append(str(commercial))
     
     return commerciaux_list, commerciaux_saisie_list
@@ -688,13 +697,28 @@ def filter_data_by_commercial_list(df, commercials_list, fiscal_year=None, month
     """Filtre les données selon la liste des commerciaux et autres critères - VERSION CORRIGÉE"""
     # Créer une copie et convertir les types
     df_copy = df.copy()
-    df_copy['Created By Line'] = df_copy['Created By Line'].astype(str)
+    
+    # CORRECTION: Détecter dynamiquement la bonne colonne selon le type de fichier
+    # Déterminer si c'est un fichier devis ou commandes en fonction des colonnes présentes
+    if 'Created On Date - Line Local' in df_copy.columns:
+        # C'est un fichier devis
+        created_by_col = get_created_by_column_name(df_copy, "devis")
+    else:
+        # C'est un fichier commandes
+        created_by_col = get_created_by_column_name(df_copy, "commandes")
+    
+    # Vérifier que la colonne existe
+    if not created_by_col or created_by_col not in df_copy.columns:
+        # Si aucune colonne trouvée, retourner un DataFrame vide
+        return pd.DataFrame()
+    
+    df_copy[created_by_col] = df_copy[created_by_col].astype(str)
     
     # Convertir la liste des commerciaux en string
     commercials_list_str = [str(x) for x in commercials_list]
     
     # Filtrer par la liste des commerciaux autorisés
-    filtered_df = df_copy[df_copy['Created By Line'].isin(commercials_list_str)].copy()
+    filtered_df = df_copy[df_copy[created_by_col].isin(commercials_list_str)].copy()
     
     if fiscal_year:
         filtered_df = filtered_df[filtered_df['Année_Fiscale'] == fiscal_year]
@@ -709,11 +733,8 @@ def filter_data_by_commercial_list(df, commercials_list, fiscal_year=None, month
         ]
     
     if commercial and commercial != "Tous les commerciaux":
-        # Utiliser la bonne colonne selon le type de fichier
-        if 'Created By Line' in filtered_df.columns:
-            filtered_df = filtered_df[filtered_df['Created By Line'] == str(commercial)]
-        elif 'Created By Header' in filtered_df.columns:
-            filtered_df = filtered_df[filtered_df['Created By Header'] == str(commercial)]
+        # Utiliser la bonne colonne détectée
+        filtered_df = filtered_df[filtered_df[created_by_col] == str(commercial)]
     
     return filtered_df
 
@@ -732,6 +753,10 @@ def calculate_kpis(df_devis, df_commandes, df_objectifs=None, df_mapping=None, f
     kpis['valeur_devis'] = df_devis[net_value_col_devis].sum() if net_value_col_devis else 0
     kpis['valeur_commandes'] = df_commandes[net_value_col_commandes].sum() if net_value_col_commandes else 0
     
+    # CORRECTION: Initialiser les variables commercials avant utilisation
+    commercials_devis = []
+    commercials_commandes = []
+    
     # Nombre de commerciaux uniques - PRENDRE TOUS CEUX DU MAPPING
     if df_mapping is not None:
         # Prendre TOUS les commerciaux du fichier de mapping
@@ -748,6 +773,15 @@ def calculate_kpis(df_devis, df_commandes, df_objectifs=None, df_mapping=None, f
         nb_commerciaux = len(all_commercials)
     
     kpis['nb_commerciaux'] = nb_commerciaux
+
+    # CORRECTION: S'assurer que commercials_devis et commercials_commandes sont définis
+    if not commercials_devis and not commercials_commandes:
+        # Si pas encore définis, les calculer ici
+        created_by_devis = get_created_by_column_name(df_devis, "devis")
+        created_by_commandes = get_created_by_column_name(df_commandes, "commandes")
+
+        commercials_devis = df_devis[created_by_devis].dropna().astype(str).unique() if created_by_devis else []
+        commercials_commandes = df_commandes[created_by_commandes].dropna().astype(str).unique() if created_by_commandes else []
 
     # Ajuster le nombre si on filtre sur un commercial spécifique
     commercials_in_data = list(set(commercials_devis) | set(commercials_commandes))
