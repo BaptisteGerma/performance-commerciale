@@ -282,17 +282,19 @@ def _detect_net_value_column(df: pd.DataFrame, fiscal_year: int, file_type="devi
         else:
             value_col = max(value_cols, key=extract_year)
     
+    # Créer une copie pour éviter de modifier l'original
+    df_copy = df.copy()
+    
     # Renommer la colonne pour uniformiser
-    df = df.rename(columns={value_col: "Net Value"})
+    df_copy = df_copy.rename(columns={value_col: "Net Value"})
     
     # Nettoyer la colonne
-    df["Net Value"] = pd.to_numeric(
-        df["Net Value"].astype(str).str.replace(r"[^\d\-,\.]", "", regex=True),
+    df_copy["Net Value"] = pd.to_numeric(
+        df_copy["Net Value"].astype(str).str.replace(r"[^\d\-,\.]", "", regex=True),
         errors="coerce"
     )
     
-    return df
-
+    return df_copy
 def aggregate_orders_by_doc(orders: pd.DataFrame, IC_VALUES=["IC-Inbound Call", "IC"], file_type="commandes") -> pd.DataFrame:
     """Agrège les commandes par document selon le type de fichier"""
     
@@ -1507,10 +1509,9 @@ def create_real_orders_data(df_commandes, df_attribution, fiscal_year):
         # Traiter TOUS les commerciaux en même temps, puis filtrer si nécessaire
         
         # Détecter et nettoyer la colonne Net Value
-        df_with_net_value = _detect_net_value_column(df_commandes_clean, fiscal_year)
-        
+        df_with_net_value = _detect_net_value_column(df_commandes_clean, fiscal_year, "commandes")
         # Agrégation par document
-        aggs = aggregate_orders_by_doc(df_with_net_value, ["IC-Inbound Call", "IC"])
+        aggs = aggregate_orders_by_doc(df_with_net_value, ["IC-Inbound Call", "IC"], "commandes")        
         
         # Attribution (INNER JOIN)
         attrib_unique = df_attribution_clean[["Order Document #","Created By Header"]].drop_duplicates("Order Document #")
@@ -3653,5 +3654,6 @@ else:
         </div>
     </div>
     """, unsafe_allow_html=True)
+
 
 
